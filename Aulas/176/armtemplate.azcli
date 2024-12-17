@@ -1,0 +1,43 @@
+# Login no Azure
+az Login  --tenant e1cb47d7-0d70-4558-ba11-c5d0fef6b3df
+
+# Parametros do script
+$rg = 'rg-armtemplate'
+$local = 'eastus2'
+$templateFile = 'azuredeploy.json'
+
+# Criar Grupo de Recurso
+az group create -n $rg -l $local
+
+# Deploy Template Base
+az deployment group create -n blanktemplate -g $rg --template-file $templateFile
+
+# Deploy template com Storage Accont
+az deployment group create -n storagetemplate -g $rg --template-file $templateFile
+
+# Deploy template com Parametros
+az deployment group create -n parameter3 -g $rg --template-file $templateFile --parameters storageName=stgarm45457 storageSKU=Standard_GRS
+
+# Deploy template com Variaveis
+$templateFile = 'azuredeploy2.json'
+az deployment group create -n variables -g $rg --template-file $templateFile --parameters storagePrefix=dev
+
+# Deploy com Output
+$templateFile = 'azuredeploy3.json'
+az deployment group create -n output -g $rg --template-file $templateFile --parameters storagePrefix=hml
+
+# Deploy Template com Parameter file
+$param = 'azuredeploy.parameters.json'
+az deployment group create -n paramfile -g $rg --template-file $templateFile --parameters $param
+
+# Listar Deployments
+az deployment group list -g $rg -o table
+
+# Export
+az deployment group export -n paramfile -g $rg
+
+# Delete Deployment
+az deployment group delete -n paramfile -g $rg
+
+# Delete Resource Group
+az group delete -g $rg -y

@@ -1,0 +1,12 @@
+# Login Azure
+az login
+
+# Parametros
+$rg = 'rb-bicep'
+$local = 'eastus2'
+
+# Criar Grupo de Recurso
+az group create -n $rg -l $local
+
+# Deploy Bicep
+az deployment group create -g $rg --template-file main.bicep

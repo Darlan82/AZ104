@@ -1,0 +1,55 @@
+# Login
+az login
+
+# Parametros
+$rg = 'rg-vm-encrypt'
+$local = 'brazilsouth'
+$vm = 'vm-win2022'
+$img = 'Win2022DataCenter'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+$disk = 'disk-vmencrypt'
+$key = 'keuencryptvm'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Criar VM
+az vm create -g $rg -n $vm --image $img --admin-username $user --admin-password $pass --os-disk-name $disk
+
+# Listar Discos
+az disk list -g $rg -o table
+
+# Detalhes do Disco
+az disk show -g $rg -n $disk 
+
+# Criar Key Vault
+$kv = 'kvvmencypt'
+az keyvault create -n $kv -g $rg -l $local --enabled-for-disk-encryption
+
+# Pegar o id do usuário
+az ad user list --filter "displayName eq 'Darlan Luz'"
+$iduser = '25d42a76-171d-4ba3-a2bc-7b51bb1fdd23'
+
+$sub = "b1fd3792-0fc5-43a5-9d57-f35a49c23057"
+$scope = [String]::Concat("/subscriptions/", $sub, "/resourceGroups/", $rg, "/providers/Microsoft.KeyVault/vaults/", $kv)      
+# Dar permissão no AIM
+az role assignment create --assignee $iduser --role "Key Vault Crypto Officer" --scope $scope
+
+# Criar Chave no Key vault
+az keyvault key create --vault-name $kv -n $key --kty RSA --size 4096
+
+# Encrypt Disk da VM
+az vm encryption enable -g $rg -n $vm --disk-encryption-keyvault $kv --key-encryption-key $key
+
+# Detalhes do Encryption
+az vm encryption show -n $vm -g $rg
+
+# Detalhes da criptografia do Disco
+az disk show -g $rg -n $disk --query encryptionSettingsCollection
+
+# Desativar Encryption Disk na VM
+az vm encryption disable -n $vm -g $rg --volume-type ALL
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y --no-wait
