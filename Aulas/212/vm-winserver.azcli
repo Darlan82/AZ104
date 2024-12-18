@@ -1,0 +1,44 @@
+# Login no Azure
+az login
+
+# Parametros
+$rg = 'rg-winserver'
+$local = 'brazilsouth'
+$vm = 'vm-winserver'
+$img = 'Win2022AzureEditionCore'
+$user = 'azureuser'
+$pwd = 'tr@ining2023'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Criar VM com Windows Server 2022 Azure Edtion Core
+az vm create -g $rg -n $vm --image $img --admin-username $user --admin-password $pwd 
+
+# Listar VMs do Azure
+az vm list -g $rg
+az vm list -g $rg -o yaml
+
+# Mostrar Detalhes da VM
+az vm show -g $rg -n $vm -o yaml
+az vm show -g $rg -n $vm --query "name"
+
+# Obter IP Publico da VM
+az vm show -d -g $rg -n $vm --query publicIps -o tsv #191.234.176.72
+
+# Abrir Porta 80 da VM
+az vm open-port --port 80 -g $rg -n $vm
+
+# Request no IP Publico da VM
+curl 191.234.176.72
+
+# Instalar IIS Web Server
+az vm run-command invoke -g $rg -n $vm --command-id RunPowerShellScript --scripts "Install-WindowsFeature -name Web-Server -IncludeManagementTools"
+
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine do Azure!'"
+
+# Adicionar Pagina Customizadas no IIS
+az vm run-command invoke -g $rg -n $vm --command-id RunPowerShellScript --scripts $script
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y
