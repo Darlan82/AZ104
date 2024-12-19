@@ -10,7 +10,6 @@ $vm = 'vm-ubuntu'
 $sku = 'Standard_B2s'
 $img = 'Ubuntu2204'
 $ip = 'ip-vm'
-$nsg = 'nsg-vm'
 
 # Parametros - Credenciais
 $user = 'azureuser'
