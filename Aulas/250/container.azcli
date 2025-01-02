@@ -11,7 +11,7 @@ az acr login --name acrcontainersapps78
 docker tag site-html acrcontainersapps78.azurecr.io/site-html
 
 # Push para o ACR
-docker push acrcontainersapps78.azurecr.io/site-html
+docker push acrcontainersapps78.azurecr.io/site-html:latest
 
 # Pull do ACR para Maquina Local
 docker pull acrcontainersapps78.azurecr.io/site-html
