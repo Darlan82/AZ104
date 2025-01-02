@@ -1,0 +1,26 @@
+# Login no Azure
+az login -t 779f8684-b294-4046-a8f2-e55213029544
+
+# Build da Imagem Localmente
+docker build -t site-html .
+
+# Login no ACR
+az acr login --name acrcontainersapps78
+
+# Tag na Imagem Local
+docker tag site-html acrcontainersapps78.azurecr.io/site-html
+
+# Push para o ACR
+docker push acrcontainersapps78.azurecr.io/site-html:latest
+
+# Pull do ACR para Maquina Local
+docker pull acrcontainersapps78.azurecr.io/site-html
+
+# Rodar Imagem vinda do ACR
+docker run -d -p 8880:80 acrcontainersapps78.azurecr.io/site-html
+
+# Listar Container
+docker container ls
+
+# Parar Docker Run
+docker stop aabd85acc0c0

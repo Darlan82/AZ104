@@ -1,0 +1,74 @@
+# Login no Azure
+az login -t 779f8684-b294-4046-a8f2-e55213029544
+
+# Variaveis
+$rg = 'rg-containers'
+$local = 'brazilsouth'
+$acr = 'acrcontainersapps598'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Checkar se nome esta em uso do ACR
+az acr check-name -n $acr
+
+# Criar Azure Container Registry
+az acr create -n $acr -g $rg --sku Basic
+
+# Mostrar endpoint
+$endpoint = (az acr show-endpoints -n $acr --query loginServer -o tsv)
+
+# Habilite a conta de usuario administrador para o ACR
+az acr update -n $acr --admin-enabled true
+
+# Listar os ACRs
+az acr list -o table
+
+# Detalhes do ACR
+az acr show -n $acr
+
+# Enviar Imagens ao Repositorio do ACR
+# Variaveis
+$img = 'site-html'
+
+# Build da Imagem Localmente
+docker build -t $img .
+
+# Login no ACR
+az acr login --name $acr
+
+# Tag na Imagem Local
+docker tag $img ($acr + '.azurecr.io/' + $img)
+
+# Push para o ACR
+docker push ($acr + '.azurecr.io/' + $img)
+
+# Criar App Service Plan e App Service for Containers
+# Variaveis
+$appplan = 'plano-containers'
+$appservice = 'appservicecontainerapps795'
+
+# Criar Plano de aplicativo com SKU S1
+az appservice plan create -g $rg -n $appplan --sku S1 -l $local --is-linux
+
+# Criar App Service for Containers
+az webapp create -g $rg -p $appplan -n $appservice -i ($acr + '.azurecr.io/' + $img)
+
+# Habilitar Deployment Continuous
+az webapp deployment container config --enable-cd true -n $appservice -g $rg
+
+# Mostar URL Continuous Deployment
+az webapp deployment container show-cd-url -n $appservice -g $rg
+
+# Obter URL para ser usada para configurar webhooks para implantacao continua
+$cicdurl = $(az webapp deployment container show-cd-url -n $appservice -g $rg --query CI_CD_URL --output tsv)
+
+# Criar Webhook no ACR
+$webhook = 'webhookacrlatest'
+az acr webhook create -n $webhook -r $acr -g $rg --actions push --uri $cicdurl --scope $img
+
+# Listar Eventos do Webhook
+az acr webhook list-events -n $webhook -r $acr
+
+# Pingar o Webhook
+az acr webhook ping -n $webhook -r $acr
