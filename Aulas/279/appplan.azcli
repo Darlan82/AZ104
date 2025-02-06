@@ -1,0 +1,44 @@
+# Login Azure
+az login --tenant  779f8684-b294-4046-a8f2-e55213029544
+# Cris --tenant 740d3ffe-a97c-4991-b909-c38b04b1b454
+
+# Variaveis que usaremos
+$rg = 'gruporecursos-appplan-2'
+$local = 'brazilsouth'
+$appplan = 'plano-apps-cli'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Criar App Service Plan da maneira mais simplificada
+az appservice plan create -g $rg -n $appplan
+
+# Mostrando detalhes do Plano
+az appservice plan show -n $appplan -g $rg
+
+# Listando todos os App Service Plans
+az appservice plan list
+
+# Excluindo App Service Plan
+az appservice plan delete -n $appplan -g $rg
+
+# Criar App Service Plan com Plano Free
+az appservice plan create -g $rg -n $appplan --sku FREE
+
+# Listando todos os App Service Plans da Camada Free
+az appservice plan list --query "[?sku.tier == 'Free']"
+
+# Atualizando App Service Plan com Plano B1
+az appservice plan update -n $appplan -g $rg --sku B1
+
+# Excluindo App Service Plan sem confirmacao
+az appservice plan delete -n $appplan -g $rg -y
+
+# Criar App Service Plan com Plano Free sem Aguardar a conclusao da Operacao
+az appservice plan create -g $rg -n $appplan --sku FREE --no-wait
+
+# Criar App Service Plan Linux
+az appservice plan create -g $rg -n $appplan --sku FREE --is-linux
+
+# Excluindo Grupo Recursos
+az group delete -n $rg
