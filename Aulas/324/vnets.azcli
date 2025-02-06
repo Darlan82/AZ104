@@ -1,0 +1,69 @@
+# Login no Azure
+az login --tenant "740d3ffe-a97c-4991-b909-c38b04b1b454"
+
+# Parametros Gerais
+$rg = 'rg-virtualnetwork'
+$local = 'brazilsouth'
+
+# Parametros Virtual Network
+$vnetbr = 'vnet-brazilsouth'
+$vnetus = 'vnet-eastus2'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Criar Redes Virtuais do Azure
+az network vnet create -g $rg -n $vnetbr --address-prefixes 10.0.0.0/16 -l brazilsouth
+
+# Criar Rede Virtual e Subnet
+az network vnet create -g $rg -n $vnetus --address-prefixes 20.0.0.0/16 --subnet-name snet-default --subnet-prefixes 20.0.0.0/24 -l eastus2
+
+# Listar Redes Virtuais
+az network vnet list
+az network vnet list -g $rg -o yaml
+
+# Listar Redes Virtuais em uma Subscription que especificam um determinado prefixo de endereco
+az network vnet list --query "[?contains(addressSpace.addressPrefixes, '10.0.0.0/16')]" -o table
+
+# Detalhar VNET
+az network vnet show -g $rg -n $vnetbr -o yaml
+
+# Atualizar Dados da Rede Virtual
+az network vnet update --address-prefixes 30.0.0.0/16 -n $vnetbr -g $rg
+
+# Atualizar Dados da Rede Virtual
+az network vnet update --address-prefixes 10.0.0.0/16 -n $vnetbr -g $rg
+
+# Listar Ips Disponiveis na VNET
+#obs: list-available-ips está em preview
+az network vnet list-available-ips -g $rg -n $vnetbr
+
+# Criar Subnets na VNET
+az network vnet subnet create -g $rg --vnet-name $vnetbr -n snet1 --address-prefixes 10.0.0.0/27
+az network vnet subnet create -g $rg --vnet-name $vnetbr -n snet2 --address-prefixes 10.0.1.0/24
+az network vnet subnet create -g $rg --vnet-name $vnetbr -n snet3 --address-prefixes 10.0.2.0/24
+az network vnet subnet create -g $rg --vnet-name $vnetbr -n snet4 --address-prefixes 10.0.3.0/26
+
+# listar Subnets na VNET
+az network vnet subnet list -g $rg --vnet-name $vnet $vnetbr -o table
+
+# Listar Subnets na VNET
+az network vnet subnet list -g $rg --vnet-name $vnetbr -o table
+
+# Mostar Detalhes da Subnet
+az network vnet subnet show -g $rg --vnet-name $vnetbr -n snet1 -o yaml
+
+# Listar Alguns ips disponiveis na subnet
+az network vnet subnet list-available-ips -g $rg --vnet-name $vnetbr -n snet4
+
+# Atualizar Subnet Address Prefixes
+az network vnet subnet update -n snet4 --vnet-name $vnetbr -g $rg --address-prefixes "10.0.5.0/24"
+
+# Excluir Subnet
+az network vnet subnet delete -n snet4 -g $rg --vnet-name $vnetbr
+
+# Excluir Virtual Network
+az network vnet delete -n $vnetbr -g $rg
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y
