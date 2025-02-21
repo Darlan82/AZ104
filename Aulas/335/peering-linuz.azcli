@@ -1,5 +1,5 @@
 # Login no Azure
-az login --tenant "740d3ffe-a97c-4991-b909-c38b04b1b454"
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
 
 # Parametros Gerais
 $rgbr = 'rg-brazilsouth'
@@ -54,3 +54,15 @@ $idvnetus = (az network vnet show -g $rgus -n $vnetus --query id -o tsv)
 
 # Peering entre as VNETs
 az network vnet peering create -n peering-us-br -g $rgus --vnet-name $vnetus --remote-vnet $idvnetbr --allow-vnet-access
+az network vnet peering create -n peering-br-us -g $rgbr --vnet-name $vnetbr --remote-vnet $idvnetus --allow-vnet-access
+
+# Entrar na VM Brazilsouth / 10.0.0.4
+ssh -i ~/.ssh/id_rsa $user@$ipbr
+
+# Entrar na VM Eastus2 | 20.0.0.4
+ssh -i ~/.ssh/id_rsa $user@$ipus
+
+# Excluir Grupo de Recursos
+az group delete -n $rgus -y --no-wait
+az group delete -n $rgbr -y --no-wait
+
