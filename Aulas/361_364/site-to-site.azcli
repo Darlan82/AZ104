@@ -1,0 +1,120 @@
+# Login no Azure
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
+
+# Parametros Matriz
+$rgmatriz = 'rg-matriz'
+$localmatriz = 'eastus'
+$vnetmatriz = 'vnet-matriz'
+$snet = 'snet-vms'
+
+# Criar Grupo de Recursos da Matriz
+az group create -g $rgmatriz -l $localmatriz 
+
+# Criar VNET e Subnet Matriz
+az network vnet create -g $rgmatriz -n $vnetmatriz --address-prefixes 10.0.0.0/16 --subnet-name $snet --subnet-prefixes 10.0.0.0/24
+
+# Criar Subnet do Gatewy na Matriz
+az network vnet subnet create -g $rgmatriz -n GatewaySubnet --vnet-name $vnetmatriz --address-prefixes 10.0.255.0/27
+
+$ipvnetgwmatriz = 'ip-vnetgateway-matriz'
+
+# Criar IP Publico para o VNET Gateway
+az network public-ip create -g $rgmatriz -n $ipvnetgwmatriz --allocation-method Static 
+
+$vnetgwmatriz = 'vnetgateway-matriz'
+
+# Criar VNET Gateway da Matriz
+az network vnet-gateway create -g $rgmatriz -n $vnetgwmatriz --public-ip-addresses $ipvnetgwmatriz --vnet $vnetmatriz `
+        --gateway-type Vpn --vpn-type RouteBased --sku VpnGw1 `
+        --no-wait
+
+# Parametros Filiais
+$rgfilial = 'rg-filial'
+$localfilial = 'brazilsouth'
+$vnetfilial = 'vnet-filial'
+$snet = 'snet-vms'
+
+# Criar Grupo de Recursos da Filial
+az group create -g $rgfilial -l $localfilial
+
+# Criar VNET e Subnet da Filial
+az network vnet create -g $rgfilial -n $vnetfilial --address-prefixes 10.1.0.0/16 --subnet-name $snet --subnet-prefixes 10.1.0.0/24
+
+# Criar Subnet Gateway da Filial
+az network vnet subnet create -g $rgfilial -n GatewaySubnet --vnet-name $vnetfilial --address-prefixes 10.1.255.0/27
+
+# Parametros Filiais
+$ipvnetgwfilial = 'ip-vnetgateway-filial'
+$vnetgwfilial = 'vnetgateway-filial'
+
+# Criar IP Publico para o VNET Gateway
+az network public-ip create -g $rgfilial -n $ipvnetgwfilial --allocation-method Static 
+
+# Criar VNET Gateway da Filial
+az network vnet-gateway create -g $rgfilial -n $vnetgwfilial --public-ip-address $ipvnetgwfilial --vnet $vnetfilial `
+        --gateway-type Vpn --vpn-type RouteBased --sku VpnGw1 `
+        --no-wait
+
+# Listar VPN Gateways
+az network vnet-gateway list -g $rgmatriz -o table
+az network vnet-gateway list -g $rgfilial -o table
+
+# Criar Local Gateways
+
+# Obter IP Publico das VNET Gateways Matriz e Filial
+$ipmatriz = (az network public-ip show -g $rgmatriz -n $ipvnetgwmatriz --query ipAddress -o tsv)
+$ipfilial = (az network public-ip show -g $rgfilial -n $ipvnetgwfilial --query ipAddress -o tsv)
+
+# Criar Local Gateway Matriz
+$localgwmatriz = 'local-gateway-matriz'
+az network local-gateway create -g $rgmatriz -n $localgwmatriz --gateway-ip-address $ipfilial --local-address-prefixes 10.1.0.0/16
+
+# Criar Local Gateway Filial
+$localgwfilial = 'local-gateway-filial'
+az network local-gateway create -g $rgfilial -n $localgwfilial --gateway-ip-address $ipmatriz --local-address-prefixes 10.0.0.0/16 
+
+# Criar Connection Matriz <> Filial
+$key = '123456'
+
+# Conexao da Matriz com a Filial
+az network vpn-connection create -g $rgmatriz -n conn-matriz-filial --vnet-gateway1 $vnetgwmatriz --local-gateway2 $localgwmatriz --shared-key $key 
+
+# Conexao da Filial com a Matriz
+az network vpn-connection create -g $rgfilial -n conn-filial-matriz --vnet-gateway1 $vnetgwfilial --local-gateway2 $localgwfilial --shared-key $key
+
+# Testar Conexao Matriz <> Filial
+
+# Parametros das VMs
+$img = 'Win2022Datacenter'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+$vmmatriz = 'vm-matriz'
+$vmfilial = 'vm-filial'
+
+# Criar VM Matriz (privada)
+az vm create -g $rgmatriz -n $vmmatriz --image $img --admin-username $user --public-ip-address "None" --admin-password $pass 
+
+# Abrir porta 80 - HTTP na VM Privada da Matriz
+az vm open-port -g $rgmatriz -n $vmmatriz --port 80
+
+# Instalar IIS e alterar site
+az vm run-command invoke -g $rgmatriz -n $vmmatriz --command-id RunPowerShellScript --scripts "Install-WindowsFeature -name Web-Server -IncludeManagementTools"
+
+$script = "Set-Content -Path ""C:\inetpub\wwwroot\iisstart.htm"" -Value ""Oi, Virtual Machine da Matriz!"""
+az vm run-command invoke -g $rgmatriz -n $vmmatriz --command-id RunPowerShellScript --scripts $script
+
+# Habilitar Ping
+az vm run-command invoke -g $rgmatriz -n $vmmatriz --command-id RunPowerShellScript --scripts "New-NetFirewallRule -Displayname 'Liberar ICMPV4-In' -Protocol ICMPv4" 
+
+# Criar VM Filial (publica)
+az vm create -g $rgfilial -n $vmfilial --image $img --admin-username $user --admin-password $pass
+
+# Abrir porta 3389 - RDP
+az vm open-port -g $rgfilial -n $vmfilial --port 3389
+
+# Habilitar Ping - Filial
+az vm run-command invoke -g $rgfilial -n $vmfilial --command-id RunPowerShellScript --scripts "New-NetFirewallRule -Displayname 'Liberar ICMPV4-In' -Protocol ICMPv4" 
+
+# Excluir Grupo de Recursos
+az group delete -n $rgmatriz -y --no-wait
+az group delete -n $rgfilial -y --no-wait
