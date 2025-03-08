@@ -92,7 +92,7 @@ $vmmatriz = 'vm-matriz'
 $vmfilial = 'vm-filial'
 
 # Criar VM Matriz (privada)
-az vm create -g $rgmatriz -n $vmmatriz --image $img --admin-username $user --public-ip-address "None" --admin-password $pass 
+az vm create -g $rgmatriz -n $vmmatriz --image $img --admin-username $user --public-ip-address '""' --admin-password $pass 
 
 # Abrir porta 80 - HTTP na VM Privada da Matriz
 az vm open-port -g $rgmatriz -n $vmmatriz --port 80

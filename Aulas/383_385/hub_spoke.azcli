@@ -1,0 +1,128 @@
+# Login no Azure
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
+
+# Parametros da VM
+$img = 'Win2022Datacenter'
+$sku = 'Standard_DS1_v2'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+
+# Parametros Hub VNET
+$rg = 'rg-hub'
+$local = 'eastus2'
+$vnethub = 'vnet-hub'
+$snethub = 'snet-hub'
+
+# Criar Grupo de Recursos da Hub
+az group create -n $rg -l $local
+
+# Criar VNET e Subnet da Hub
+az network vnet create -g $rg -n $vnethub --address-prefixes 10.0.0.0/16 --subnet-name $snethub --subnet-prefixes 10.0.0.0/24 
+
+# Parametros Spoke 1 - East US 2
+$rgspoke1 = 'rg-spoke-eastus2'
+$localspoke1 = 'eastus2'
+$vnetspoke1 = 'vnet-spoke-eastus2'
+$snetspoke1 = 'snet-vms'
+$vmspoke1 = 'vm-eastus2'
+
+# Criar Grupo de Recursos da Spoke 1 - EAST US 2
+az group create -n $rgspoke1 -l $localspoke1
+
+# Criar VNET e Subnet da Spoke 1 - EAST US 2
+az network vnet create -g $rgspoke1 -n $vnetspoke1 -l $localspoke1 --address-prefixes 10.1.0.0/16 --subnet-name $snetspoke1 --subnet-prefixes 10.1.0.0/24 
+
+# Criar VM - Spoke 1 - EAST US 2
+az vm create -g $rgspoke1 -n $vmspoke1 --image $img --admin-username $user --admin-password $pass --nsg '""' --public-ip-address '""' --vnet-name $vnetspoke1 --subnet $snetspoke1 
+
+# Parametros Spoke 2 - Brazil South
+$rgspoke2 = 'rg-spoke-brazilsouth'
+$localspoke2 = 'brazilsouth'
+$vnetspoke2 = 'vnet-spoke-brazilsouth'
+$snetspoke2 = 'snet-vms'
+$vmspoke2 = 'vm-brazilsouth'
+
+
+# Criar Grupo de Recursos da Spoke 2 - BRAZIL SOUTH
+az group create -n $rgspoke2 -l $localspoke2
+
+# Criar VNET e Subnet da Spoke 2 - BRAZIL SOUTH
+az network vnet create -g $rgspoke2 -n $vnetspoke2 --address-prefixes 10.2.0.0/16 --subnet-name $snetspoke2 --subnet-prefixes 10.2.0.0/24
+
+# Criar VM - Spoke 2 - Brazil South
+az vm create -g $rgspoke2 -n $vmspoke2 --image $img --admin-username $user --admin-password $pass --nsg '""' --public-ip-address '""' --vnet-name $vnetspoke2 --subnet $snetspoke2 
+
+# Scripts VMs
+$script = "New-NetFirewallRule -Displayname 'Liberar ICMPV4-In' -Protocol ICMPv4"
+
+# Liberar Regra para Ping na VM
+az vm run-command invoke -g $rgspoke1 -n $vmspoke1 --command-id RunPowerShellScript --scripts $script
+az vm run-command invoke -g $rgspoke2 -n $vmspoke2 --command-id RunPowerShellScript --scripts $script
+
+# Parametros VNET Gateway
+$ipvnetgtw = 'ip-vnet-gateway'
+$vnetgtw = 'vnet-gateway'
+
+# Virtual Network Gateway
+# Criar IP Publico
+az network public-ip create -n $ipvnetgtw -g $rg --allocation-method Static
+
+# Criar Subnet na VNET do Hub para o VNET Gateway
+az network vnet subnet create --vnet-name $vnethub -n GatewaySubnet -g $rg --address-prefix 10.0.255.0/27
+
+# Criar VNET Gateway
+az network vnet-gateway create -n $vnetgtw -l $local --public-ip-address $ipvnetgtw -g $rg `
+    --vnet $vnethub --gateway-type Vpn --sku VpnGw1 --vpn-type RouteBased #`
+    #--no-wait
+
+# Peering entre Spokes e HUB
+# Recuper ID das VNETs
+$idvnethub = (az network vnet show -g $rg -n $vnethub --query id -o tsv)
+$idvnetspoke1 = (az network vnet show -g $rgspoke1 -n $vnetspoke1 --query id -o tsv)
+$idvnetspoke2 = (az network vnet show -g $rgspoke2 -n $vnetspoke2 --query id -o tsv)
+
+# Peering HUB <> SPOKE 1 EAST US 2
+az network vnet peering create -n peering-eastus2-hub -g $rgspoke1 --vnet-name $vnetspoke1 --remote-vnet $idvnethub `
+    --allow-forwarded-traffic --allow-vnet-access --allow-gateway-transit --use-remote-gateways
+
+az network vnet peering create -n peering-hub-eastus2 -g $rg --vnet-name $vnethub --remote-vnet $idvnetspoke1 `
+    --allow-forwarded-traffic --allow-vnet-access --allow-gateway-transit
+
+# Peering HUB <> SPOKE 2 BRAZIL SOUTH
+az network vnet peering create -n peering-brazilsouth-hub -g $rgspoke2 --vnet-name $vnetspoke2 --remote-vnet $idvnethub `
+    --allow-forwarded-traffic --allow-vnet-access --allow-gateway-transit --use-remote-gateways
+
+az network vnet peering create -n peering-hub-brazilsouth -g $rg --vnet-name $vnethub --remote-vnet $idvnetspoke2 `
+    --allow-forwarded-traffic --allow-vnet-access --allow-gateway-transit
+
+# Habilitar Bastion Host na HUB
+# Criar subnet AzureBastionSubnet
+az network vnet subnet create -n AzureBastionSubnet -g $rg --vnet-name $vnethub --address-prefix 10.0.5.0/26
+
+# Criar IP Public do Bastion
+$ipbastion = 'ip-bastion'
+az network public-ip create -g $rg -n $ipbastion --sku Standard -l $local
+
+# Criar Bastion Host na HUB
+az network bastion create -g $rg -n bastionHost --public-ip-address $ipbastion --vnet-name $vnethub --no-wait
+
+
+# Criar Route Tables
+$routetablespoke1 = 'routetable-hub-eastus2'
+$routetablespoke2 = 'routetable-hub-brazilsouth'
+
+az network route-table create -g $rgspoke1 -n $routetablespoke1
+az network route-table create -g $rgspoke2 -n $routetablespoke2
+
+# Vincular Subnet a Route Table
+az network vnet subnet update --vnet-name $vnetspoke1 -n $snetspoke1 -g $rgspoke1 --route-table $routetablespoke1
+az network vnet subnet update --vnet-name $vnetspoke2 -n $snetspoke2 -g $rgspoke2 --route-table $routetablespoke2
+
+# Criar Rotas da Spoke <> Spoke
+az network route-table route create -g $rgspoke1 --route-table-name $routetablespoke1 -n route-eastus2-brazilsouth --next-hop-type VirtualNetworkGateway --address-prefix 10.2.0.0/24
+az network route-table route create -g $rgspoke2 --route-table-name $routetablespoke2 -n route-brazilsouth-eastus2 --next-hop-type VirtualNetworkGateway --address-prefix 10.1.0.0/24
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y --no-wait
+az group delete -n $rgspoke1 -y --no-wait
+az group delete -n $rgspoke2 -y --no-wait
