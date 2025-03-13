@@ -100,7 +100,7 @@ az vm open-port -g $rgmatriz -n $vmmatriz --port 80
 # Instalar IIS e alterar site
 az vm run-command invoke -g $rgmatriz -n $vmmatriz --command-id RunPowerShellScript --scripts "Install-WindowsFeature -name Web-Server -IncludeManagementTools"
 
-$script = "Set-Content -Path ""C:\inetpub\wwwroot\iisstart.htm"" -Value ""Oi, Virtual Machine da Matriz!"""
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine da Matriz!'"
 az vm run-command invoke -g $rgmatriz -n $vmmatriz --command-id RunPowerShellScript --scripts $script
 
 # Habilitar Ping

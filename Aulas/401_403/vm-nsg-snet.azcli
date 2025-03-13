@@ -1,0 +1,105 @@
+# Login no Azure
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
+
+# Parametros Gerais
+$rg = 'rg-nsg-appdb'
+$local = 'brazilsouth'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Parametros Network Security Grouop
+$nsg = 'nsg-appdb'
+
+# Criar Network Security Grouop
+az network nsg create -g $rg -n $nsg
+
+# Parametros VNET e Subnets
+$vnet = 'vnet-appdb'
+$snetapp= 'snet-application'
+$snetdb = 'snet-database'
+
+# Criar VNET e Subnet da Aplicacao
+az network vnet create -g $rg -n $vnet --address-prefixes 10.0.0.0/16 --subnet-name $snetapp --subnet-prefixes 10.0.0.0/24 --network-security-group $nsg
+
+# Criar Subnet para VM do Banco de Dados
+az network vnet subnet create -g $rg -n $snetdb --vnet-name $vnet --address-prefixes 10.0.1.0/24 --network-security-group $nsg
+
+# Parametros VM Gerais
+$img = 'Win2022Datacenter'
+$sku = 'Standard_B2s'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+
+# Parametros da VM da Aplicacao
+$vmapp = 'vm-app'
+$nicapp = 'nic-app'
+$ipapp = 'ip-app'
+
+# Criar VM da APlicacao - IP Publico
+az network public-ip create -g $rg -n $ipapp --sku Standard -l $local
+
+# Criar VM da Aplicacao - NIC
+az network nic create -g $rg -n $nicapp --vnet-name $vnet --subnet $snetapp --public-ip-address $ipapp
+
+# Criar VM da Aplicacao
+az vm create -g $rg -n $vmapp --image $img --size $sku --admin-username $user --admin-password $pass --nics $nicapp 
+
+# Parametros da VM do Banco de dados
+$vmdb = 'vm-db'
+$nicdb = 'nic-db'
+$ipdb = 'ip-db'
+
+# Criar VM do Banco de dados - IP Publico
+az network public-ip create -g $rg -n $ipdb --sku Standard -l $local
+
+# Criar VM do Banco de Dados - NIC
+az network nic create -g $rg -n $nicdb --vnet-name $vnet --subnet $snetdb --public-ip-address $ipdb
+
+# Criar VM do Banco de Dados
+az vm create -g $rg -n $vmdb --image $img --size $sku --admin-username $user --admin-password $pass --nics $nicdb 
+
+# Criar NSG Rule para Liberar RDP nas VMs
+az network nsg rule create -g $rg --nsg-name $nsg -n "PermiteAcessoRDP" `
+    --direction Inbound --priority 100 --source-address-prefixes "*" `
+    --source-port-ranges '*' --destination-address-prefixes "*" `
+    --destination-port-ranges 3389 --access Allow `
+    --protocol Tcp --description "Permite Acesso a Porta 3389 - RDP Inbound"
+
+# Instala IIS nas VMs
+$script = "Install-WindowsFeature -name Web-Server -IncludeManagementTools"
+az vm run-command invoke -g $rg -n $vmapp --command-id RunPowerShellScript --scripts $script 
+az vm run-command invoke -g $rg -n $vmdb  --command-id RunPowerShellScript --scripts $script
+
+# Instala troca site padrão nas VMs
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine App!'"
+az vm run-command invoke -g $rg -n $vmapp --command-id RunPowerShellScript --scripts $script 
+
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine DB!'"
+az vm run-command invoke -g $rg -n $vmdb  --command-id RunPowerShellScript --scripts $script 
+
+# Bloquear Acesso entre VM Database para Aplicacao
+az network nsg rule create -g $rg --nsg-name $nsg -n 'BloquearDatabaseAppHTTP' `
+    --direction Inbound --priority 900 --source-address-prefixes 10.0.1.4 `
+    --source-port-ranges '*' --destination-address-prefixes 10.0.0.4 `
+    --destination-port-ranges 80 --access Deny --protocol Tcp `
+    --description "Bloquear acesso da VM Database para a VM de Aplicacao na porta 80 - HTTP"
+
+# Liberar Porta 80 - Internet
+az network nsg rule create -g $rg --nsg-name $nsg -n LiberarPora80 `
+    --direction Inbound --priority 101 --source-address-prefixes "*" --source-port-ranges "*" `
+    --destination-address-prefixes "*" --destination-port-ranges 80 --access Allow --protocol Tcp `
+    --description "Expor Porta 80 - HTTP"
+
+# Excluir Liberacao Porta 80 - Internet
+az network nsg rule delete -g $rg --nsg-name $nsg -n LiberarPora80
+
+# Liberar Porta 80 apenas no IP da VM de Aplicacao
+az network nsg rule create -g $rg --nsg-name $nsg -n LiberarPorta80App `
+    --direction Inbound --priority 101 --source-address-prefixes "*" --source-port-range "*" `
+    --destination-address-prefixes 10.0.0.4 --destination-port-ranges 80 --access Allow `
+    --protocol Tcp `
+    --description "Expor porta 80 HTTP apenas da VM de Aplicacao"
+
+# Excluir Resource Group
+az group delete -n $rg -y --no-wait
