@@ -1,0 +1,112 @@
+# Login no Azure
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
+
+# Parametros Gerais
+$rg = 'rg-asg-appdb'
+$local = 'brazilsouth'
+
+# Parametros Rede Virtual
+$nsg = 'nsg-appdb'
+$vnet = 'vnet-appdb'
+$snet = 'snet-appdb'
+$asgrdp = 'asg-rdp'
+$asgweb = 'asg-web'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# Criar Network Security Group
+az network nsg create -g $rg -n $nsg
+
+# Criar VNET e Subnet
+az network vnet create -g $rg -n $vnet --address-prefixes 10.0.0.0/16 --subnet-name $snet --subnet-prefixes 10.0.0.0/24 --network-security-group $nsg
+
+# Criar Application Security Group
+az network asg create -g $rg -n $asgrdp
+az network asg create -g $rg -n $asgweb
+
+# Parametros Gerais VMs
+$img = 'Win2022Datacenter'
+$sku = 'Standard_B2s'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+
+# Parametros VMs de Aplicacao Web
+# VM 1
+$vmapp1 = 'vm-app1'
+$nicapp1 = 'nic-app1'
+$ipapp1 = 'ip-app1'
+
+# VM 2
+$vmapp2 = 'vm-app2'
+$nicapp2 = 'nic-app2'
+$ipapp2 = 'ip-app2'
+
+# Criar Maquinas Virtuais Web
+# Criar Ip Publico
+az network public-ip create -g $rg -n $ipapp1 --sku Standard -l $local 
+az network public-ip create -g $rg -n $ipapp2 --sku Standard -l $local
+
+# Criar NIC
+az network nic create -g $rg -n $nicapp1 --vnet-name $vnet --subnet $snet --public-ip-address $ipapp1 
+az network nic create -g $rg -n $nicapp2 --vnet-name $vnet --subnet $snet --public-ip-address $ipapp2 
+
+# Criar VMs
+az vm create -g $rg -n $vmapp1 --image $img --size $sku --admin-username $user --admin-password $pass --nics $nicapp1 
+az vm create -g $rg -n $vmapp2 --image $img --size $sku --admin-username $user --admin-password $pass --nics $nicapp2
+
+# Instala IIS nas VMs
+$script = "Install-WindowsFeature -name Web-Server -IncludeManagementTools"
+az vm run-command invoke -g $rg -n $vmapp1 --command-id RunPowerShellScript --scripts $script 
+az vm run-command invoke -g $rg -n $vmapp2  --command-id RunPowerShellScript --scripts $script 
+
+# Instala troca site padrão nas VMs
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine App <b>1</b>!'"
+az vm run-command invoke -g $rg -n $vmapp1 --command-id RunPowerShellScript --scripts $script 
+
+$script = "Set-Content -Path 'C:\inetpub\wwwroot\iisstart.htm' -Value 'Oi, Virtual Machine App <b>2</b>!'"
+az vm run-command invoke -g $rg -n $vmapp2  --command-id RunPowerShellScript --scripts $script 
+
+# Parametros VM de Banco de Dados
+$vmdb = 'vm-database'
+$nicdb = 'nic-database'
+$ipdb = 'ip-database'
+
+# Criar VM para Banco de Dados
+# Ip Publico para VM Database
+az network public-ip create -g $rg -n $ipdb --sku Standard -l $local
+
+# Criar Interface de Rede para VM de Banco de Dados
+az network nic create -g $rg -n $nicdb --vnet-name $vnet --subnet $snet --public-ip-address $ipdb
+
+# Criar VM Database
+az vm create -g $rg -n $vmdb --image $img --size $sku --admin-username $user --admin-password $pass --nics $nicdb 
+
+# Criar NSG Rule para Liberar RDP nas VMs
+az network nsg rule create -g $rg --nsg-name $nsg -n LiberarRDP `
+    --access Allow --protocol Tcp --direction Inbound --priority 100 `
+    --source-address-prefix "*" --source-port-range "*" `
+    --destination-asgs $asgrdp --destination-port-range 3389
+
+# Vincular Interface de Rede da VM Banco de Dados ao ASG
+az network nic ip-config update -g $rg --application-security-groups $asgrdp -n ipconfig1 `
+    --nic-name $nicdb --vnet-name $vnet --subnet $snet
+
+# Criar NSG Rule para Liberar Acesso a Porta 80 e 443 nas VMs de Aplicacao
+az network nsg rule create -g $rg --nsg-name $nsg -n LiberaWeb `
+    --access Allow --protocol Tcp --direction Inbound --priority 101 `
+    --source-address-prefix "*" --source-port-range "*" `
+    --destination-asgs $asgweb --destination-port-range 80 443
+
+# Vincular Interface de Rede das VMs de Aplicacao ao ASG WEB
+az network nic ip-config update -g $rg --application-security-groups $asgweb -n ipconfig1 `
+    --nic-name $nicapp1 --vnet-name $vnet --subnet $snet
+az network nic ip-config update -g $rg --application-security-groups $asgweb -n ipconfig1 `
+    --nic-name $nicapp2 --vnet-name $vnet --subnet $snet
+
+# Vincular ASG RDP a VM 2 da APlicacao
+az network nic ip-config update -g $rg --application-security-groups $asgrdp $asgweb `
+    -n ipconfig1 --nic-name $nicapp2 --vnet-name $vnet --subnet $snet
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y --no-wait
