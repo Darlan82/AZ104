@@ -1,0 +1,93 @@
+# Login no Azure
+az login --tenant "779f8684-b294-4046-a8f2-e55213029544"
+
+# Parametros Gerais
+$rg= 'rg-service-endpoint'
+$local= 'brazilsouth'
+
+# Parametros Rede Virtual
+$vnet= 'vnet-serviceendpoint'
+$snetbackend= 'snet-backend'
+$snetfrontend= 'snet-frontend'
+$nsg= 'nsg-serviceendpoint'
+
+# Criar Grupo de Recursos
+az group create -n $rg -l $local
+
+# criar Network Security Group
+az network nsg create -g $rg -n $nsg
+
+# Criar VNET e Subnet do Backend
+az network vnet create -g $rg -n $vnet --address-prefixes 10.0.0.0/16 --subnet-name $snetbackend `
+    --subnet-prefixes 10.0.0.0/24 --network-security-group $nsg
+
+# Criar Subnet do Frontend
+az network vnet subnet create -g $rg -n $snetfrontend --vnet-name $vnet --address-prefixes 10.0.1.0/24 `
+    --network-security-group $nsg
+
+# Atualizar subnet backend indicando que usar Service Endpoint como Microsoft.Storage
+az network vnet subnet update --vnet-name $vnet -g $rg -n $snetbackend --service-endpoints Microsoft.Storage
+
+# Criar NSG Rule para Liberar Acesso na VNET a Storage
+az network nsg rule create -g $rg --nsg-name $nsg -n LiberarStorage --priority 100 --direction Outbound `
+    --source-address-prefixes "VirtualNetwork" --source-port-ranges "*" --destination-address-prefixes "Storage" `
+    --destination-port-ranges "*" --access Allow --protocol "*"
+
+# Criar NSG Rule para Bloquear Acesso a internet
+az network nsg rule create -g $rg --nsg-name $nsg -n BloquearAcessoInternet --priority 110 --direction Outbound `
+    --source-address-prefixes "VirtualNetwork" --source-port-ranges "*" --destination-address-prefixes "Internet" `
+    --destination-port-ranges "*" --access Deny --protocol "*"
+
+# Criar uma instância do objeto Random
+$random = [System.Random]::new()
+
+# Gerar um número aleatório entre 100 e 1000
+$RANDOM = $random.Next(100, 1000)
+
+# Parametros Storage
+$storage = 'stgservice' + $RANDOM
+$fileshare = 'datashare'
+
+# Criar Storage Account
+az storage account create -g $rg -n $storage --sku Standard_LRS
+
+# Obter Chave do Storage Account
+$key = (az storage account keys list -g $rg --account-name $storage --query "[0].value")
+
+# Criar File Share
+az storage share create --account-name $storage --account-key $key -n $fileshare
+
+# Negar todo acesso ao storage
+az storage account update -g $rg -n $storage --default-action Deny
+
+# Liberar Acesso apenas a Subnet Backend
+az storage account network-rule add -g $rg --account-name $storage --vnet-name $vnet --subnet $snetbackend
+
+# Parametros das VMs
+$img = 'Win2019Datacenter'
+$sku = 'Standard_DS1_v2'
+$user = 'azureuser'
+$pass = 'tr@ining2023'
+$vmbackend = 'vm-backend'
+$vmfrontend = 'vm-frontend'
+
+
+# Criar VM
+az vm create -g $rg -n $vmbackend --vnet-name $vnet --subnet $snetbackend --image $img --size $sku `
+    --admin-username $user --admin-password $pass --nsg '""' --public-ip-address '""' 
+
+az vm create -g $rg -n $vmfrontend --vnet-name $vnet --subnet $snetfrontend --image $img --size $sku `
+    --admin-username $user --admin-password $pass --nsg '""' --public-ip-address '""' 
+
+# Criar subnet do Bastion
+az network vnet subnet create -g $rg -n AzureBastionSubnet --vnet-name $vnet --address-prefixes 10.0.3.0/26
+
+# Criar IP Public para o Bastion
+$ipbastion = 'ip-bastion'
+az network public-ip create -g $rg -n $ipbastion --sku Standard
+
+# Criar Bastion
+az network bastion create -g $rg -n bastionhost --public-ip-address $ipbastion --vnet-name $vnet 
+
+# Excluir Grupo de Recursos
+az group delete -n $rg -y --no-wait
