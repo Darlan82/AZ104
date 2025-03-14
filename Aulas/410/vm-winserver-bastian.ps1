@@ -66,4 +66,4 @@ $ipbastion = New-AzPublicIpAddress -ResourceGroupName $rg -Name "ip-bastion" -Lo
 New-AzBastion -ResourceGroupName $rg -Name "bastion" -PublicIpAddress $ipbastion -VirtualNetwork $vnet
 
 #Excluir Grupo de Recursos
-Remove-AzResourceGroup -Name $rg -Force -Confirm -AsJob
+Remove-AzResourceGroup -Name $rg -Force -Confirm:$false -AsJob
